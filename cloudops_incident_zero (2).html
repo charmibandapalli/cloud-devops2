@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CloudOps: Incident Zero</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#07111f;color:#eef6ff}
+.wrap{max-width:920px;margin:auto;padding:20px}.panel{background:#0f2034;border:1px solid #29435f;border-radius:20px;padding:24px;box-shadow:0 15px 45px #0005}
+.top{display:flex;gap:10px;flex-wrap:wrap}.badge{background:#19304b;border:1px solid #31516f;padding:8px 12px;border-radius:999px;font-weight:700}
+h1{margin:0 0 5px}.muted{color:#9bb0c6}.screen{margin-top:18px;background:#091624;border:1px solid #27405a;border-radius:16px;padding:20px}
+.alert{border-left:5px solid #e5a43b;background:#17283b;padding:15px;border-radius:10px;margin:12px 0}
+.clues{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
+.clue{background:#12263d;border:1px solid #29445f;border-radius:12px;padding:14px}
+.actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:16px}
+button{width:100%;padding:13px 14px;border-radius:11px;border:1px solid #3b5b78;background:#17304a;color:#fff;font-weight:700;cursor:pointer}
+button:hover{background:#244765}.primary{background:#247ec7;border-color:#3995df}.danger{background:#7d3440;border-color:#a64b58}
+.good{border-color:#2c9b70!important;background:#103c31!important}.bad{border-color:#a34a55!important;background:#3a1820!important}
+.hidden{display:none}.bar{height:8px;background:#20384f;border-radius:10px;overflow:hidden;margin:15px 0}.fill{height:100%;background:#48a9ed;width:0;transition:.3s}
+.big{font-size:30px;font-weight:800}.center{text-align:center}.choiceTitle{font-weight:800;margin-bottom:8px}
+</style>
+</head>
+<body><div class="wrap"><div class="panel">
+<h1>🕵️ CloudOps: Incident Zero</h1><div class="muted">Investigate. Decide. Repair the infrastructure.</div>
+<div class="top" style="margin-top:16px"><span class="badge">🧩 Case <span id="caseNo"></span></span><span class="badge">❤️ <span id="lives">3</span></span><span class="badge">⭐ <span id="score">0</span></span><span class="badge">🔎 Clues <span id="clueCount">0</span>/3</span></div>
+<div class="bar"><div class="fill" id="fill"></div></div>
+<div id="app"></div>
+</div></div>
+<script>
+const cases=[{"title": "The Silent Server", "problem": "The company website is online, but the operations team cannot see useful performance information.", "clues": ["EC2 status: RUNNING", "Application is responding normally", "Monitoring dashboard has no useful metrics"], "tools": ["CloudWatch", "IAM", "S3", "EBS"], "correct": ["CloudWatch"], "event": "Monitoring is restored and the team can now observe the server."}, {"title": "The Locked Bucket", "problem": "Employees can see that files exist in S3, but the application receives Access Denied when reading them.", "clues": ["S3 bucket contains the files", "EC2 is healthy", "Application role has restricted permissions"], "tools": ["IAM", "CloudWatch", "EC2", "Terraform"], "correct": ["IAM"], "event": "The correct permission is restored and the application can read the files."}, {"title": "The Missing Disk", "problem": "A Linux application on EC2 needs persistent block storage for its data.", "clues": ["EC2 is running", "The application needs attached block storage", "The data must persist independently of the instance"], "tools": ["EBS", "S3", "IAM", "CloudWatch"], "correct": ["EBS"], "event": "Block storage is attached and the application can save persistent data."}, {"title": "The File Warehouse", "problem": "A website needs scalable storage for thousands of uploaded images and documents.", "clues": ["Files are objects", "Users upload many documents", "Storage should be accessed as an AWS object store"], "tools": ["S3", "EBS", "EC2", "SSH"], "correct": ["S3"], "event": "The object-storage layer is connected and uploads work again."}, {"title": "The Remote Door", "problem": "An administrator needs secure command-line access to a remote Linux server.", "clues": ["The machine is remote", "The administrator needs terminal access", "The connection must be secure"], "tools": ["SSH", "S3", "CloudWatch", "IAM"], "correct": ["SSH"], "event": "The administrator securely connects to the Linux server."}, {"title": "The Lost Location", "problem": "A Linux administrator is unsure which directory they are currently working in.", "clues": ["The terminal is open", "Several directories exist", "The current location must be identified before navigating"], "tools": ["pwd", "ls", "cd", "rm"], "correct": ["pwd"], "event": "The current working directory is displayed."}, {"title": "The Wrong Folder", "problem": "The administrator must move into a directory named cloud.", "clues": ["The terminal is already open", "A folder named cloud exists", "The task is to change directories"], "tools": ["cd cloud", "pwd", "ls", "mkdir"], "correct": ["cd cloud"], "event": "The terminal moves into the cloud directory."}, {"title": "The Infrastructure Blueprint", "problem": "A team wants to create repeatable cloud infrastructure from configuration instead of manually creating resources.", "clues": ["Infrastructure should be defined as code", "The setup should be repeatable", "The team wants declarative infrastructure management"], "tools": ["Terraform", "Ansible", "SSH", "CloudWatch"], "correct": ["Terraform"], "event": "The infrastructure plan is created and can be reproduced."}, {"title": "The Server Factory", "problem": "A team needs to automate configuration and software installation across multiple servers.", "clues": ["Several machines must be configured", "Tasks should be automated", "The team needs configuration management"], "tools": ["Ansible", "Terraform", "S3", "EBS"], "correct": ["Ansible"], "event": "The servers are configured automatically."}, {"title": "The Server Blueprint", "problem": "A web application needs a virtual compute server in AWS.", "clues": ["The application needs compute", "The resource should be a virtual server", "It will run in AWS"], "tools": ["EC2", "S3", "IAM", "CloudWatch"], "correct": ["EC2"], "event": "The virtual server is launched."}];
+let c,score=0,lives=3,stage=0,investigated=new Set(),locked=false;
+const app=document.getElementById('app');
+function pick(){c=cases[Math.floor(Math.random()*cases.length)];document.getElementById('caseNo').textContent=Math.floor(100+Math.random()*900);render();}
+function update(){document.getElementById('lives').textContent=lives;document.getElementById('score').textContent=score;document.getElementById('clueCount').textContent=investigated.size;document.getElementById('fill').style.width=((stage/3)*100)+'%';}
+function render(){
+locked=false;stage=0;investigated=new Set();
+app.innerHTML=`<div class="screen"><div class="alert"><b>🚨 INCIDENT</b><p>${c.problem}</p></div>
+<h3>Mission 1 — Investigate the system</h3><p class="muted">Open the three diagnostic panels. Each panel reveals a clue.</p>
+<div class="actions" id="panels"></div><div id="clues" class="clues"></div>
+<div id="next" class="hidden" style="margin-top:18px"><button class="primary" onclick="decision()">Continue to Repair →</button></div></div>`;
+["Server","Logs","Configuration"].forEach((x,i)=>{let b=document.createElement('button');b.textContent="🔍 Inspect "+x;b.onclick=()=>inspect(i);document.getElementById('panels').appendChild(b)});
+update();
+}
+function inspect(i){
+if(locked||investigated.has(i))return;
+investigated.add(i);stage++;score+=10;
+let d=document.createElement('div');d.className='clue';d.innerHTML=`<b>Clue ${stage}</b><br>${c.clues[i]}`;document.getElementById('clues').appendChild(d);
+if(stage===3)document.getElementById('next').classList.remove('hidden');update();
+}
+function decision(){
+app.innerHTML=`<div class="screen"><div class="alert"><b>🧠 DIAGNOSIS TIME</b><p>You have collected all the clues. Choose the technology that should be used to repair the incident.</p></div>
+<div class="choiceTitle">Available tools</div><div class="actions" id="tools"></div><div id="feedback" style="margin-top:15px"></div></div>`;
+c.tools.forEach(t=>{let b=document.createElement('button');b.textContent=t;b.onclick=()=>repair(t);document.getElementById('tools').appendChild(b)});
+}
+function repair(t){
+if(locked)return;locked=true;
+const ok=c.correct.includes(t),fb=document.getElementById('feedback');
+if(ok){score+=100;fb.className='screen good';fb.innerHTML=`<div class="big">✅ SYSTEM RESTORED</div><p>${c.event}</p><p>+100 points</p><button class="primary" onclick="nextCase()">Next Incident →</button>`}
+else{lives--;fb.className='screen bad';fb.innerHTML=`<div class="big">⚠️ REPAIR FAILED</div><p>${t} does not address the clues. You lost one life.</p><button onclick="retry()">Re-open Diagnosis</button>`;if(lives<=0){fb.innerHTML=`<div class="big">💥 INCIDENT UNSOLVED</div><p>You ran out of lives.</p><button class="primary" onclick="location.reload()">Restart Game</button>`}}
+update();
+}
+function retry(){locked=false;decision()}
+function nextCase(){score+=0;pick()}
+pick();
+</script></body></html>
